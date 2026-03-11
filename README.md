@@ -1,13 +1,31 @@
-# AaaspEx
+# aaasp-ex
 
-**TODO: Add description**
+Open-source Elixir agent execution engine. Provides the executor and tool-calling layer that powers [AAASP](https://aaasp.ai) — a multi-tenant Agent-as-a-Service platform.
+
+Built on [Jido](https://github.com/agentjido/jido) and [ReqLLM](https://hex.pm/packages/req_llm). Licensed under the [Functional Source License 1.1](./LICENSE) (converts to Apache 2.0 after 4 years).
+
+---
+
+## What's included
+
+| Module | Description |
+|--------|-------------|
+| `AaaspEx.Executor` | Behaviour + dispatcher for execution backends |
+| `AaaspEx.Executor.JidoDirect` | Single-turn LLM call via ReqLLM |
+| `AaaspEx.Executor.JidoReAct` | ReAct (Reason + Act) tool-calling loop |
+| `AaaspEx.Tools.Registry` | Maps tool name strings to `Jido.Action` modules |
+| `AaaspEx.Tools.Actions.SearchWeb` | Web search tool (pluggable provider) |
+| `AaaspEx.Tools.Actions.ReadUrl` | Fetch and extract text from a URL |
+| `AaaspEx.Tools.Actions.HttpRequest` | Generic HTTP GET/POST tool |
+| `AaaspEx.RunContext` | Lightweight run descriptor (no Ecto dependency) |
+| `AaaspEx.AgentDef` | Agent configuration struct |
+
+---
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `aaasp_ex` to your list of dependencies in `mix.exs`:
-
 ```elixir
+# mix.exs
 def deps do
   [
     {:aaasp_ex, "~> 0.1.0"}
@@ -15,7 +33,108 @@ def deps do
 end
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/aaasp_ex>.
+Configure the Finch pool used by built-in HTTP tools:
 
+```elixir
+# config/config.exs
+config :aaasp_ex, :finch_pool, MyApp.Finch
+```
+
+Make sure a Finch process with that name is started in your supervision tree. If you skip this config, the tools default to `AaaspEx.Finch` and you'll need to start that yourself.
+
+---
+
+## Usage
+
+### Single-turn execution
+
+```elixir
+ctx = %AaaspEx.RunContext{
+  id:        "run-123",
+  prompt:    "Summarise the Jido README",
+  tenant_id: "tenant-abc"
+}
+
+agent_def = %AaaspEx.AgentDef{
+  executor:      "jido_direct",
+  system_prompt: "You are a helpful assistant.",
+  model_config:  %{"provider" => "anthropic", "model" => "claude-haiku-4-5-20251001"},
+  tools:         []
+}
+
+{:ok, result, usage} = AaaspEx.Executor.dispatch(ctx, agent_def, api_key)
+```
+
+### ReAct tool-calling loop
+
+```elixir
+agent_def = %AaaspEx.AgentDef{
+  executor:     "jido_react",
+  model_config: %{"provider" => "anthropic", "max_iterations" => 5},
+  tools:        ["search_web", "read_url"]
+}
+
+{:ok, result, usage} = AaaspEx.Executor.dispatch(ctx, agent_def, api_key)
+```
+
+### Streaming
+
+```elixir
+AaaspEx.Executor.stream_dispatch(ctx, agent_def, api_key, fn chunk ->
+  IO.write(chunk)
+end)
+```
+
+---
+
+## Custom backends
+
+Implement the `AaaspEx.Executor` behaviour and register via config:
+
+```elixir
+config :aaasp_ex, :executors, %{
+  "my_executor" => MyApp.Executors.Custom
+}
+```
+
+Your module receives `(ctx, agent_def, api_key, opts)` and returns
+`{:ok, result, usage} | {:error, reason}`.
+
+---
+
+## Custom tools
+
+Implement a `Jido.Action` and register via config:
+
+```elixir
+config :aaasp_ex, :tools, %{
+  "my_tool" => MyApp.Tools.MyTool
+}
+```
+
+Tools must expose a `to_tool/1` function returning a `ReqLLM.Tool` struct
+with a callback for use in the ReAct loop.
+
+---
+
+## Model providers
+
+ReqLLM supports multiple providers out of the box. Set `provider` in `model_config`:
+
+| Provider | Example model |
+|----------|---------------|
+| `"anthropic"` | `"claude-haiku-4-5-20251001"` |
+| `"openai"` | `"gpt-4o-mini"` |
+| `"groq"` | `"llama-3.1-8b-instant"` |
+| `"deepseek"` | `"deepseek-chat"` |
+| `"together"` | `"meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"` |
+
+---
+
+## License
+
+[Functional Source License 1.1, Apache 2.0 Future License](./LICENSE)
+
+Free to use for non-commercial and internal purposes. Cannot be used to offer aaasp-ex as a managed/hosted service to third parties. Converts to Apache 2.0 four years from each release date.
+
+Commercial licenses available at [aaasp.ai](https://aaasp.ai).
