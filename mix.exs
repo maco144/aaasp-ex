@@ -2,7 +2,7 @@ defmodule AaaspEx.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/aaasp/aaasp-ex"
+  @source_url "https://github.com/maco144/aaasp-ex"
 
   def project do
     [
