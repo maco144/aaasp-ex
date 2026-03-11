@@ -38,7 +38,6 @@ defmodule AaaspEx.MixProject do
 
   defp package do
     [
-      licenses: ["FSL-1.1-Apache-2.0"],
       links: %{"GitHub" => @source_url},
       files: ~w(lib mix.exs README.md LICENSE CHANGELOG.md)
     ]
