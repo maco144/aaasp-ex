@@ -1,7 +1,7 @@
 defmodule AaaspEx.Mcp.ServerPool do
   @moduledoc """
   Manages a set of MCP server connections and resolves their tools as
-  `ReqLLM.Tool.t()` structs ready for use in executor loops.
+  maps ready for use in executor loops.
 
   This is the main integration point — callers pass a list of server specs
   and get back a flat list of tools plus a cleanup function.
@@ -9,12 +9,12 @@ defmodule AaaspEx.Mcp.ServerPool do
   ## Example
 
       servers = [
-        %{command: "npx", args: ["-y", "get-physics-done"], prefix: "physics_"},
-        %{command: "python", args: ["-m", "my_mcp_server"]}
+        %{transport: "stdio", command: "npx", args: ["-y", "get-physics-done"], prefix: "physics_"},
+        %{transport: "sse", url: "https://mcp.example.com/mcp", prefix: "remote_"}
       ]
 
       {:ok, tools, cleanup_fn} = AaaspEx.Mcp.ServerPool.connect_and_resolve(servers)
-      # tools is [ReqLLM.Tool.t()] — use in ReAct loop
+      # tools is a list of tool maps — use in ReAct loop
       # call cleanup_fn.() when done to disconnect all servers
   """
 
@@ -22,15 +22,18 @@ defmodule AaaspEx.Mcp.ServerPool do
   require Logger
 
   @type server_spec :: %{
-          command: String.t(),
-          args: [String.t()],
-          env: [{String.t(), String.t()}],
-          prefix: String.t()
+          optional(:transport) => String.t(),
+          optional(:command) => String.t(),
+          optional(:args) => [String.t()],
+          optional(:env) => [{String.t(), String.t()}],
+          optional(:url) => String.t(),
+          optional(:headers) => [{String.t(), String.t()}],
+          optional(:prefix) => String.t()
         }
 
   @doc """
   Connect to all MCP servers, discover their tools, and return bridged
-  `ReqLLM.Tool.t()` structs.
+  tool maps.
 
   Returns `{:ok, tools, cleanup_fn}` where `cleanup_fn` is a zero-arity
   function that disconnects all servers. The caller is responsible for
@@ -40,7 +43,7 @@ defmodule AaaspEx.Mcp.ServerPool do
   and the failed servers are logged.
   """
   @spec connect_and_resolve([server_spec()], keyword()) ::
-          {:ok, [ReqLLM.Tool.t()], (-> :ok)} | {:error, term()}
+          {:ok, [map()], (-> :ok)} | {:error, term()}
   def connect_and_resolve(server_specs, opts \\ []) when is_list(server_specs) do
     timeout = Keyword.get(opts, :timeout, 60_000)
 
@@ -85,32 +88,51 @@ defmodule AaaspEx.Mcp.ServerPool do
   end
 
   defp connect_one(spec, timeout) do
-    command = Map.fetch!(spec, :command)
-    args = Map.get(spec, :args, [])
-    env = Map.get(spec, :env, [])
-    prefix = Map.get(spec, :prefix, "")
+    transport = Map.get(spec, :transport, Map.get(spec, "transport", "stdio"))
+    prefix = Map.get(spec, :prefix, Map.get(spec, "prefix", ""))
 
-    with {:ok, pid} <- Client.start_link(command: command, args: args, env: env),
-         # Give the server a moment to initialize
-         :ok <- wait_for_init(pid, timeout),
+    client_opts = build_client_opts(transport, spec)
+
+    with {:ok, pid} <- Client.start_link(client_opts),
+         :ok <- wait_for_init(pid),
          {:ok, mcp_tools} <- Client.list_tools(pid, timeout) do
       tools = ToolBridge.to_tools(mcp_tools, pid, prefix: prefix, timeout: timeout)
 
+      label = transport_label(transport, spec)
+
       Logger.info(
-        "[MCP.ServerPool] connected to #{command} #{Enum.join(args, " ")} — " <>
-          "#{length(tools)} tools discovered"
+        "[MCP.ServerPool] connected to #{label} — #{length(tools)} tools discovered"
       )
 
-      {:ok, %{pid: pid, tools: tools, command: command}}
+      {:ok, %{pid: pid, tools: tools, label: label}}
     end
   end
 
-  # Poll for initialization (the MCP handshake is async via Port messages)
-  defp wait_for_init(_pid, timeout) when timeout <= 0, do: {:error, :init_timeout}
+  defp build_client_opts("sse", spec) do
+    url = Map.get(spec, :url) || Map.fetch!(spec, "url")
+    headers = Map.get(spec, :headers, Map.get(spec, "headers", []))
 
-  defp wait_for_init(pid, _timeout) do
-    # Try listing tools — if the server isn't ready, it'll fail or timeout
-    # The Client GenServer queues calls, so this effectively waits for init
+    [transport: :sse, url: url, headers: headers]
+  end
+
+  defp build_client_opts(_stdio, spec) do
+    command = Map.get(spec, :command) || Map.fetch!(spec, "command")
+    args = Map.get(spec, :args, Map.get(spec, "args", []))
+    env = Map.get(spec, :env, Map.get(spec, "env", []))
+
+    [transport: :stdio, command: command, args: args, env: env]
+  end
+
+  defp transport_label("sse", spec),
+    do: "SSE #{Map.get(spec, :url) || Map.get(spec, "url", "?")}"
+
+  defp transport_label(_, spec) do
+    command = Map.get(spec, :command) || Map.get(spec, "command", "?")
+    args = Map.get(spec, :args, Map.get(spec, "args", []))
+    "#{command} #{Enum.join(args, " ")}"
+  end
+
+  defp wait_for_init(pid) do
     Process.sleep(100)
 
     if Process.alive?(pid) do

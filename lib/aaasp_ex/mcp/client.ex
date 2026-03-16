@@ -2,20 +2,29 @@ defmodule AaaspEx.Mcp.Client do
   @moduledoc """
   MCP (Model Context Protocol) client for connecting to external tool servers.
 
-  Manages the lifecycle of an MCP server connection over stdio transport.
+  Manages the lifecycle of an MCP server connection over stdio or SSE transport.
   Handles the JSON-RPC 2.0 protocol, initialization handshake, tool discovery,
   and tool invocation.
 
-  ## Usage
+  ## Stdio (local process)
 
       {:ok, client} = AaaspEx.Mcp.Client.start_link(
+        transport: :stdio,
         command: "npx",
         args: ["-y", "some-mcp-server"]
       )
 
+  ## SSE (remote HTTP server)
+
+      {:ok, client} = AaaspEx.Mcp.Client.start_link(
+        transport: :sse,
+        url: "https://mcp.example.com/mcp"
+      )
+
+  ## Common API
+
       {:ok, tools} = AaaspEx.Mcp.Client.list_tools(client)
       {:ok, result} = AaaspEx.Mcp.Client.call_tool(client, "tool_name", %{"arg" => "value"})
-
       AaaspEx.Mcp.Client.disconnect(client)
   """
 
@@ -25,13 +34,10 @@ defmodule AaaspEx.Mcp.Client do
   @call_timeout 60_000
 
   defstruct [
-    :port,
-    :command,
-    :args,
-    :env,
+    :transport_mod,
+    :transport_pid,
     :next_id,
     :pending,
-    :buffer,
     :server_info,
     :initialized
   ]
@@ -43,9 +49,16 @@ defmodule AaaspEx.Mcp.Client do
 
   ## Options
 
+    * `:transport` — `:stdio` (default) or `:sse`
+
+  ### Stdio options
     * `:command` — executable to spawn (required)
     * `:args` — list of command arguments (default: `[]`)
-    * `:env` — list of `{key, value}` env vars for the spawned process (default: `[]`)
+    * `:env` — list of `{key, value}` env vars (default: `[]`)
+
+  ### SSE options
+    * `:url` — HTTP endpoint URL (required)
+    * `:headers` — extra HTTP headers (default: `[]`)
   """
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
@@ -70,29 +83,16 @@ defmodule AaaspEx.Mcp.Client do
 
   @impl true
   def init(opts) do
-    command = Keyword.fetch!(opts, :command)
-    args = Keyword.get(opts, :args, [])
-    env = Keyword.get(opts, :env, [])
+    transport_type = Keyword.get(opts, :transport, :stdio)
+    {transport_mod, transport_opts} = build_transport_opts(transport_type, opts)
 
-    port_opts = [
-      :binary,
-      :exit_status,
-      :use_stdio,
-      {:args, args},
-      {:env, Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)},
-      {:line, 1_048_576}
-    ]
-
-    port = Port.open({:spawn_executable, find_executable(command)}, port_opts)
+    {:ok, transport_pid} = transport_mod.start_link([{:owner, self()} | transport_opts])
 
     state = %__MODULE__{
-      port: port,
-      command: command,
-      args: args,
-      env: env,
+      transport_mod: transport_mod,
+      transport_pid: transport_pid,
       next_id: 1,
       pending: %{},
-      buffer: "",
       server_info: nil,
       initialized: false
     }
@@ -100,7 +100,7 @@ defmodule AaaspEx.Mcp.Client do
     # Send initialize request
     {id, state} = next_id(state)
 
-    send_jsonrpc(state.port, %{
+    send_rpc(state, %{
       jsonrpc: "2.0",
       id: id,
       method: "initialize",
@@ -120,7 +120,7 @@ defmodule AaaspEx.Mcp.Client do
   def handle_call(:list_tools, from, state) do
     {id, state} = next_id(state)
 
-    send_jsonrpc(state.port, %{
+    send_rpc(state, %{
       jsonrpc: "2.0",
       id: id,
       method: "tools/list",
@@ -134,7 +134,7 @@ defmodule AaaspEx.Mcp.Client do
   def handle_call({:call_tool, name, arguments}, from, state) do
     {id, state} = next_id(state)
 
-    send_jsonrpc(state.port, %{
+    send_rpc(state, %{
       jsonrpc: "2.0",
       id: id,
       method: "tools/call",
@@ -146,34 +146,22 @@ defmodule AaaspEx.Mcp.Client do
   end
 
   @impl true
-  def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
-    case Jason.decode(line) do
-      {:ok, msg} ->
-        {:noreply, handle_message(msg, state)}
-
-      {:error, _} ->
-        Logger.debug("[MCP] non-JSON line from server: #{inspect(line)}")
-        {:noreply, state}
-    end
+  def handle_info({:mcp_message, msg}, state) do
+    {:noreply, handle_message(msg, state)}
   end
 
-  def handle_info({port, {:data, {:noeol, chunk}}}, %{port: port} = state) do
-    {:noreply, %{state | buffer: state.buffer <> chunk}}
-  end
+  def handle_info({:mcp_transport_closed, status}, state) do
+    Logger.warning("[MCP] transport closed: #{inspect(status)}")
 
-  def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.warning("[MCP] server exited with status #{status}")
-
-    # Reply to any pending callers with an error
     for {_id, pending} <- state.pending do
       case pending do
-        {:list_tools, from} -> GenServer.reply(from, {:error, :server_exited})
-        {:call_tool, from} -> GenServer.reply(from, {:error, :server_exited})
+        {:list_tools, from} -> GenServer.reply(from, {:error, :transport_closed})
+        {:call_tool, from} -> GenServer.reply(from, {:error, :transport_closed})
         _ -> :ok
       end
     end
 
-    {:stop, {:server_exited, status}, %{state | pending: %{}}}
+    {:stop, {:transport_closed, status}, %{state | pending: %{}}}
   end
 
   def handle_info(msg, state) do
@@ -182,13 +170,17 @@ defmodule AaaspEx.Mcp.Client do
   end
 
   @impl true
-  def terminate(_reason, %{port: port} = _state) do
-    if Port.info(port) do
-      Port.close(port)
+  def terminate(_reason, %{transport_mod: mod, transport_pid: pid}) when not is_nil(pid) do
+    try do
+      mod.stop(pid)
+    catch
+      :exit, _ -> :ok
     end
 
     :ok
   end
+
+  def terminate(_reason, _state), do: :ok
 
   # -- Message handling --
 
@@ -200,8 +192,7 @@ defmodule AaaspEx.Mcp.Client do
       :initialize ->
         Logger.info("[MCP] initialized: #{inspect(result["serverInfo"])}")
 
-        # Send initialized notification
-        send_jsonrpc(state.port, %{
+        send_rpc(state, %{
           jsonrpc: "2.0",
           method: "notifications/initialized"
         })
@@ -256,7 +247,6 @@ defmodule AaaspEx.Mcp.Client do
     end
   end
 
-  # Notifications from server (no id) — log and ignore for now
   defp handle_message(%{"method" => method}, state) do
     Logger.debug("[MCP] notification: #{method}")
     state
@@ -277,15 +267,15 @@ defmodule AaaspEx.Mcp.Client do
     %{state | pending: Map.put(state.pending, id, value)}
   end
 
-  defp send_jsonrpc(port, message) do
-    json = Jason.encode!(message)
-    Port.command(port, json <> "\n")
+  defp send_rpc(state, message) do
+    state.transport_mod.send_message(state.transport_pid, message)
   end
 
-  defp find_executable(command) do
-    case System.find_executable(command) do
-      nil -> raise "MCP: executable not found: #{command}"
-      path -> to_charlist(path)
-    end
+  defp build_transport_opts(:stdio, opts) do
+    {AaaspEx.Mcp.Transport.Stdio, Keyword.take(opts, [:command, :args, :env])}
+  end
+
+  defp build_transport_opts(:sse, opts) do
+    {AaaspEx.Mcp.Transport.Sse, Keyword.take(opts, [:url, :headers])}
   end
 end
