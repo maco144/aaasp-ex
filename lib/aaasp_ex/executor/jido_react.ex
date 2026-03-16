@@ -23,6 +23,7 @@ defmodule AaaspEx.Executor.JidoReAct do
 
   require Logger
   alias AaaspEx.Tools.Registry
+  alias AaaspEx.Mcp.ServerPool
 
   @default_max_iterations 10
 
@@ -35,7 +36,11 @@ defmodule AaaspEx.Executor.JidoReAct do
     max_iter   = Map.get(model_cfg, "max_iterations", @default_max_iterations)
 
     tool_context = %{api_key: api_key, tenant_id: ctx.tenant_id}
-    tools = Registry.resolve_as_tools(agent_def.tools || [], tool_context)
+    registry_tools = Registry.resolve_as_tools(agent_def.tools || [], tool_context)
+
+    # Connect to MCP servers and merge their tools
+    {mcp_tools, mcp_cleanup} = resolve_mcp_tools(agent_def.mcp_servers || [])
+    tools = registry_tools ++ mcp_tools
 
     req_opts = [
       api_key:     api_key,
@@ -46,9 +51,15 @@ defmodule AaaspEx.Executor.JidoReAct do
 
     initial_context = AaaspEx.Executor.build_messages(agent_def.system_prompt, ctx.prompt, opts)
 
-    Logger.info("[AaaspEx.JidoReAct] #{model_spec} tools=#{inspect(agent_def.tools)} run=#{ctx.id}")
+    tool_names = Enum.map(tools, & &1.name)
+    Logger.info("[AaaspEx.JidoReAct] #{model_spec} tools=#{inspect(tool_names)} run=#{ctx.id}")
 
-    react_loop(model_spec, initial_context, tools, req_opts, 0, max_iter, nil)
+    result = react_loop(model_spec, initial_context, tools, req_opts, 0, max_iter, nil)
+
+    # Clean up MCP connections after run completes
+    mcp_cleanup.()
+
+    result
   end
 
   defp react_loop(_model, _context, _tools, _opts, iter, max, _usage) when iter >= max do
@@ -102,6 +113,20 @@ defmodule AaaspEx.Executor.JidoReAct do
       input_tokens:  Map.get(a, :input_tokens, 0)  + Map.get(b, :input_tokens, 0),
       output_tokens: Map.get(a, :output_tokens, 0) + Map.get(b, :output_tokens, 0)
     }
+  end
+
+  defp resolve_mcp_tools([]), do: {[], fn -> :ok end}
+
+  defp resolve_mcp_tools(server_specs) do
+    case ServerPool.connect_and_resolve(server_specs) do
+      {:ok, tools, cleanup} ->
+        Logger.info("[AaaspEx.JidoReAct] MCP: #{length(tools)} tools from #{length(server_specs)} server(s)")
+        {tools, cleanup}
+
+      {:error, reason} ->
+        Logger.warning("[AaaspEx.JidoReAct] MCP connection failed: #{inspect(reason)}")
+        {[], fn -> :ok end}
+    end
   end
 
   defp default_model("anthropic"), do: "claude-haiku-4-5-20251001"

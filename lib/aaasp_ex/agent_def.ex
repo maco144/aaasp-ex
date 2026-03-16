@@ -7,17 +7,26 @@ defmodule AaaspEx.AgentDef do
   schema types before dispatching.
   """
 
+  @type mcp_server :: %{
+          command: String.t(),
+          args: [String.t()],
+          env: [{String.t(), String.t()}],
+          prefix: String.t()
+        }
+
   @type t :: %__MODULE__{
           executor:      String.t(),
           system_prompt: String.t() | nil,
           model_config:  map(),
-          tools:         [String.t()]
+          tools:         [String.t()],
+          mcp_servers:   [mcp_server()]
         }
 
   defstruct executor: "jido_direct",
             system_prompt: nil,
             model_config: %{},
-            tools: []
+            tools: [],
+            mcp_servers: []
 
   @doc """
   Build an AgentDef from a plain map. All keys optional.
@@ -28,7 +37,8 @@ defmodule AaaspEx.AgentDef do
       executor:      Map.get(attrs, :executor)      || Map.get(attrs, "executor", "jido_direct"),
       system_prompt: Map.get(attrs, :system_prompt) || Map.get(attrs, "system_prompt"),
       model_config:  Map.get(attrs, :model_config)  || Map.get(attrs, "model_config", %{}),
-      tools:         Map.get(attrs, :tools)          || Map.get(attrs, "tools", [])
+      tools:         Map.get(attrs, :tools)          || Map.get(attrs, "tools", []),
+      mcp_servers:   Map.get(attrs, :mcp_servers)    || Map.get(attrs, "mcp_servers", [])
     }
   end
 end
