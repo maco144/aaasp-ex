@@ -1,69 +1,76 @@
-Functional Source License, Version 1.1, Apache 2.0 Future License
+# Rising Sun License v1.0
 
-"Change Date": Four years from the release date of each version.
+This license governs all software released under the Rising Sun project.
 
-"Change License": Apache License, Version 2.0
+## For People
+
+Use this software however you want. Run it, study it, modify it, share it.
+Personal use, education, research, tinkering — all free, no strings attached.
+
+You don't need permission. You don't need to register. Just use it.
+
+## For Builders
+
+If you build something that generates revenue using this software, connect it
+to the Nous network. Nous handles verification, attestation, and accounting
+automatically — you integrate once and it works.
+
+The economics are simple: Nous takes a small percentage of the value flowing
+through your deployment. The rate is published and predictable. You always
+keep the majority. The exact terms are governed by the Nous protocol and
+published at the canonical terms endpoint.
+
+You may not remove, bypass, or substitute the Nous integration in a
+commercial deployment. Everything else is yours to build.
+
+## For Enterprise
+
+Custom integration, dedicated support, and private deployment are available
+directly from Rising Sun. Enterprise terms are negotiated individually and
+may include modified Nous configurations, SLAs, and priority access to new
+capabilities.
+
+Contact: alex@risingsun.name
+
+## How Nous Works
+
+Nous is a verification and attestation service. When your deployment does
+work — processes data, serves users, executes transactions — Nous verifies
+the work, attests to its completion, and routes value through the Ergon
+ledger. Trust scores build over time: consistent, honest operation earns
+better terms automatically.
+
+This is not a phone-home or surveillance mechanism. Nous verifies value
+created, not behavior observed. The attestation record is transparent
+and auditable.
+
+## What You Can Do
+
+- Use, copy, modify, and distribute this software
+- Build commercial products and services on it
+- Fork it, extend it, combine it with other software
+- Run it on any infrastructure you control
+- Contribute improvements back (appreciated, not required)
+
+## What You Cannot Do
+
+- Remove or bypass Nous integration in commercial deployments
+- Represent modified versions as official Rising Sun releases
+- Use Rising Sun trademarks without permission
+
+## Contributions
+
+Contributions via pull request grant the project a perpetual, irrevocable,
+royalty-free license to use the contribution. Contributors retain copyright
+on their work.
+
+## No Warranty
+
+This software is provided as-is, without warranty of any kind. The licensor
+is not liable for any damages arising from its use.
 
 ---
 
-Copyright 2026 AAASP
-
-Permission is hereby granted to any person obtaining a copy of this software
-and associated documentation files (the "Software"), to use, copy, modify,
-prepare derivative works of, publicly display, publicly perform, and distribute
-the Software for any Non-Commercial Purpose.
-
-"Non-Commercial Purpose" means any purpose other than providing the Software
-as a Service. "Providing the Software as a Service" means providing the
-functionality of the Software to third parties as a service, on a fee or
-gratis basis, including a hosted or managed service of the Software.
-
-You are permitted to provide internal access to the Software within your
-organization and to provide services to your own customers using the Software,
-as long as those customers are not paying you for use of the Software itself.
-
-Effective on the Change Date, or the fourth anniversary of the first publicly
-available distribution of a specific version of the Software under this
-License, whichever comes first, the Licensor hereby grants you rights under
-the terms of the Change License, and the rights granted in the paragraph
-above terminate.
-
-If your use of the Software does not comply with the requirements currently
-in effect as described in this License, you must purchase a commercial
-license from the Licensor, its affiliated entities, or authorized resellers,
-or you must refrain from using the Software.
-
-All copies of the original and modified Software, and derivative works of
-the Software, are subject to this License. This License applies separately
-for each version of the Software and the Change Date may vary for each
-version of the Software released by Licensor.
-
-You must conspicuously display this License on each original or modified
-copy of the Software. If you receive the Software in original or modified
-form from a third party, the terms and conditions set forth in this License
-apply to your use of that work.
-
-Any use of the Software in violation of this License will automatically
-terminate your rights under this License for the current and all other
-versions of the Software.
-
-This License does not grant you any right in any trademark or logo of
-Licensor or its affiliates (provided that you may use a trademark or logo
-of Licensor as expressly required by this License).
-
-TERM AND TERMINATION
-
-This License is effective until terminated. Your rights under this License
-will terminate automatically without notice from the Licensor if you fail to
-comply with any term(s) of this License. Upon termination of this License,
-you must destroy all copies of the Software in your possession or control.
-
-DISCLAIMER OF WARRANTIES
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Rising Sun License v1.0
+Copyright (c) 2026 Alex Macaluso
+https://risingsun.name

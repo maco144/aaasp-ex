@@ -2,7 +2,7 @@
 
 Open-source Elixir agent execution engine. Provides the executor and tool-calling layer that powers [AAASP](https://aaasp.ai) — a multi-tenant Agent-as-a-Service platform.
 
-Built on [Jido](https://github.com/agentjido/jido) and [ReqLLM](https://hex.pm/packages/req_llm). Licensed under the [Functional Source License 1.1](./LICENSE) (converts to Apache 2.0 after 4 years).
+Built on [Jido](https://github.com/agentjido/jido) and [ReqLLM](https://hex.pm/packages/req_llm). Licensed under the [Rising Sun License v1.0](./LICENSE).
 
 ---
 
@@ -133,8 +133,6 @@ ReqLLM supports multiple providers out of the box. Set `provider` in `model_conf
 
 ## License
 
-[Functional Source License 1.1, Apache 2.0 Future License](./LICENSE)
+[Rising Sun License v1.0](./LICENSE)
 
-Free to use for non-commercial and internal purposes. Cannot be used to offer aaasp-ex as a managed/hosted service to third parties. Converts to Apache 2.0 four years from each release date.
-
-Commercial licenses available at [aaasp.ai](https://aaasp.ai).
+Free for personal use. Commercial deployments must integrate with the Nous network. Enterprise licenses available at [aaasp.ai](https://aaasp.ai).
